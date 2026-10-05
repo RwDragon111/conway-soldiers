@@ -59,6 +59,7 @@ body, html {
     height: 100%;
     display: block;
     cursor: default;
+    touch-action: none;
 }
 
 /* ------------------------------------------------ */

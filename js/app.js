@@ -1,6 +1,7 @@
 /**
  * Conway's Soldiers - Main Application Controller
- * Handles inputs, gestures, shortcuts, modals, translations and animations.
+ * High-responsiveness click-to-move (no holding required),
+ * smart jumps, gesture handling and infinite field controls.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -10,9 +11,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Interaction State
     let mode = 'play'; // 'play' | 'edit'
-    let editBrush = 'toggle'; // 'toggle' | 'add' | 'remove'
+    let editBrush = 'toggle';
     let isMouseDown = false;
     let isDraggingBoard = false;
+    let isPieceInteraction = false;
     let startMouseX = 0;
     let startMouseY = 0;
     let lastMouseX = 0;
@@ -22,9 +24,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Touch gesture state
     let initialPinchDistance = null;
-    let touchStartGrid = null;
 
-    // Translations (Russian default, English toggle)
+    // Prevent default context menu so holding right click / long tap never blocks game
+    window.addEventListener('contextmenu', e => {
+        if (e.target === canvas) e.preventDefault();
+    });
+
     let currentLang = 'ru';
 
     const i18n = {
@@ -48,7 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
             soundOff: "Звук: Выкл",
             recordToast: "Новый рекорд! Достигнут Уровень +",
             impossibleNotice: "Уровень 5 математически недостижим!",
-            presetHalfplane: "Полная армия (Полуплоскость)",
+            presetHalfplane: "Бесконечная армия (Вся полуплоскость)",
             presetLevel1: "Уровень 1 (2 солдата)",
             presetLevel2: "Уровень 2 (4 солдата)",
             presetLevel3: "Уровень 3 (8 солдат)",
@@ -57,23 +62,24 @@ document.addEventListener('DOMContentLoaded', () => {
             close: "Закрыть",
             rulesTitle: "Правила и Математическая Теорема",
             rulesContent: `
-                <p><strong>Солдаты Конвея</strong> (Армия Конвея, 1961 г.) — знаменитая математическая головоломка Джона Хортона Конвея на бесконечной клетчатой доске.</p>
+                <p><strong>Солдаты Конвея</strong> (Армия Конвея, 1961 г.) — математическая головоломка Джона Хортона Конвея на <strong>бесконечной клетчатой доске</strong>.</p>
                 <h4>Правила прыжков:</h4>
                 <ul>
-                    <li>Доска разделена горизонтальной <strong>стартовой линией</strong> (y = 0).</li>
-                    <li>Изначально все солдаты находятся за линией (y &le; 0).</li>
-                    <li>Солдат может перепрыгнуть через соседнего солдата по горизонтали или вертикали на свободную клетку. Перепрыгнутый солдат удаляется с доски.</li>
-                    <li><strong>Цель:</strong> продвинуть солдата как можно выше за линию (y &ge; 1).</li>
+                    <li>Доска разделена горизонтальной <strong>стартовой чертой</strong> (y = 0).</li>
+                    <li>Вся бесконечная нижняя полуплоскость (y &le; 0) заполнена <strong>бесконечным числом солдат</strong>.</li>
+                    <li>Солдат перепрыгивает через соседнего солдата по горизонтали или вертикали на свободную клетку. Перепрыгнутый солдат снимается с доски.</li>
+                    <li><strong>Управление в 1 клик:</strong> просто нажмите на солдата (появятся зеленые точки приземления) и нажмите на точку. Зажимать ничего не нужно!</li>
+                    <li><strong>Цель:</strong> продвинуть хотя бы одного солдата как можно выше за черту (на уровни +1, +2, +3, +4...).</li>
                 </ul>
                 <h4>Теорема Конвея о недостижимости 5-го уровня:</h4>
-                <p>Джон Конвей доказал, что за <strong>любое конечное число ходов</strong> невозможно продвинуть солдата на 5-й ряд выше линии (y = 5)!</p>
-                <p>Доказательство использует золотое сечение &phi; = (&radic;5 - 1)/2 &asymp; 0.618. Если присвоить каждой клетке вес &phi;<sup>d</sup> (где d — манхэттенское расстояние до цели), то суммарный вес конфигурации при любых ходах не возрастает. Для цели на 5-м уровне суммарный вес всей бесконечной нижней полуплоскости равен ровно 1, в то время как вес одной лишь целевой клетки уже равен 1 (&phi;<sup>0</sup> = 1). Поскольку любая конечная армия имеет вес строго меньше 1, достичь уровня 5 конечным числом ходов невозможно!</p>
+                <p>Джон Конвей математически доказал, что за <strong>любое конечное число ходов</strong> невозможно продвинуть солдата на 5-й ряд (y = 5)!</p>
+                <p>Доказательство строится на инварианте с золотым сечением &phi; = (&radic;5 - 1)/2 &asymp; 0.618. Суммарный вес всей бесконечной нижней полуплоскости для цели на 5-м ряду равен 1. Так как любая конечная последовательность ходов задействует лишь конечное подмножество солдат со строгим весом &lt; 1, достичь 5-го уровня невозможно!</p>
                 <h4>Управление:</h4>
                 <ul>
-                    <li><strong>Перемещение поля:</strong> Зажмите мышь на пустом месте (или среднюю кнопку/пробел) и двигайте.</li>
-                    <li><strong>Масштаб:</strong> Колёсико мыши или жесты щипка на тачпаде/экране.</li>
-                    <li><strong>Прыжок:</strong> Кликните на солдата, затем на подсвеченную клетку приземления.</li>
-                    <li><strong>Горячие клавиши:</strong> <code>Ctrl+Z</code> (отмена), <code>Ctrl+Y</code> (повтор), <code>Space</code> (панорама), <code>R</code> (сброс), <code>E</code> (редактор).</li>
+                    <li><strong>Прыжок:</strong> Клик по шару &rarr; клик по зеленой цели. Либо клик по пустой клетке, куда возможен прыжок!</li>
+                    <li><strong>Перемещение поля:</strong> Перетаскивайте пустое поле мышью или пальцем.</li>
+                    <li><strong>Масштаб:</strong> Колёсико мыши или жест щипка.</li>
+                    <li><strong>Горячие клавиши:</strong> <code>Ctrl+Z</code> (отмена), <code>Ctrl+Y</code> (повтор), <code>R</code> (сброс), <code>E</code> (редактор).</li>
                 </ul>
             `
         },
@@ -97,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
             soundOff: "Sound: Off",
             recordToast: "New Record! Reached Level +",
             impossibleNotice: "Level 5 is mathematically impossible!",
-            presetHalfplane: "Full Army (Half-plane)",
+            presetHalfplane: "Infinite Army (Entire Half-plane)",
             presetLevel1: "Level 1 Challenge (2 soldiers)",
             presetLevel2: "Level 2 Challenge (4 soldiers)",
             presetLevel3: "Level 3 Challenge (8 soldiers)",
@@ -106,23 +112,24 @@ document.addEventListener('DOMContentLoaded', () => {
             close: "Close",
             rulesTitle: "Rules & Mathematical Theorem",
             rulesContent: `
-                <p><strong>Conway's Soldiers</strong> (or checker-jumping problem, 1961) is a celebrated mathematical game devised by John Horton Conway on an infinite grid.</p>
-                <h4>Move Mechanics:</h4>
+                <p><strong>Conway's Soldiers</strong> (1961) is John Conway's mathematical puzzle played on an <strong>infinite checkerboard</strong>.</p>
+                <h4>Rules:</h4>
                 <ul>
-                    <li>The board is divided by a horizontal <strong>starting line</strong> (y = 0).</li>
-                    <li>All soldiers initially stand behind the line (y &le; 0).</li>
+                    <li>The board is divided by a <strong>starting line</strong> (y = 0).</li>
+                    <li>The entire lower half-plane (y &le; 0) is packed with an <strong>infinite army of soldiers</strong>.</li>
                     <li>A soldier jumps horizontally or vertically over an orthogonally adjacent soldier into an empty space immediately beyond. The jumped soldier is removed.</li>
-                    <li><strong>Goal:</strong> Advance a soldier as far above the line (y &ge; 1) as possible.</li>
+                    <li><strong>1-Click Moves:</strong> Click a soldier to see green landing targets, then click the target. No holding down needed!</li>
+                    <li><strong>Goal:</strong> Advance a soldier as far north (Level +1, +2, +3, +4...) as possible.</li>
                 </ul>
                 <h4>Conway's Impossibility Theorem:</h4>
-                <p>Conway proved that no soldier can reach row 5 (Level 5) in any finite number of moves, regardless of the army configuration!</p>
-                <p>The proof assigns each cell a weight &phi;<sup>d</sup> where &phi; = (&radic;5 - 1)/2 &asymp; 0.61803... is the golden ratio and d is the Manhattan distance to the target. Every jump preserves or decreases the total weight. The infinite sum of weights over the entire half-plane for row 5 equals 1, but any finite set of soldiers has weight strictly less than 1. Hence, row 5 is unreachable!</p>
+                <p>Conway proved that row 5 (Level 5) cannot be reached in any finite number of moves!</p>
+                <p>Weights based on the golden ratio &phi; = (&radic;5 - 1)/2 show that the entire half-plane has total weight 1 towards row 5, but any finite army has weight strictly less than 1. Since valid jumps never increase total weight, reaching row 5 is impossible!</p>
                 <h4>Controls:</h4>
                 <ul>
-                    <li><strong>Pan:</strong> Click and drag on empty space (or middle click / Space + drag).</li>
+                    <li><strong>Jump:</strong> Click soldier &rarr; click green target. Or click an empty square where a unique jump is available!</li>
+                    <li><strong>Pan:</strong> Click and drag empty space or one finger touch.</li>
                     <li><strong>Zoom:</strong> Mouse wheel or pinch gesture.</li>
-                    <li><strong>Jump:</strong> Click a soldier to select, then click the highlighted target square.</li>
-                    <li><strong>Shortcuts:</strong> <code>Ctrl+Z</code> (undo), <code>Ctrl+Y</code> (redo), <code>Space</code> (pan), <code>R</code> (reset), <code>E</code> (edit mode).</li>
+                    <li><strong>Shortcuts:</strong> <code>Ctrl+Z</code> (undo), <code>Ctrl+Y</code> (redo), <code>R</code> (reset), <code>E</code> (edit mode).</li>
                 </ul>
             `
         }
@@ -154,7 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('modal-rules-close').textContent = dict.close;
         document.getElementById('modal-presets-close').textContent = dict.close;
 
-        // Presets list
         document.getElementById('preset-halfplane-label').textContent = dict.presetHalfplane;
         document.getElementById('preset-level1-label').textContent = dict.presetLevel1;
         document.getElementById('preset-level2-label').textContent = dict.presetLevel2;
@@ -168,9 +174,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateStatsHUD() {
         document.getElementById('stat-moves').textContent = engine.moveCount;
-        document.getElementById('stat-soldiers').textContent = engine.soldiersCount;
+        document.getElementById('stat-soldiers').textContent = engine.soldiersCountDisplay;
 
-        const currentLvl = engine.getCurrentLevel();
         const peakLvl = engine.peakLevel;
         const recordElem = document.getElementById('stat-record');
 
@@ -182,7 +187,6 @@ document.addEventListener('DOMContentLoaded', () => {
             recordElem.className = 'stat-value';
         }
 
-        // Undo / Redo button state
         document.getElementById('btn-undo').disabled = engine.moveHistory.length === 0;
         document.getElementById('btn-redo').disabled = engine.redoHistory.length === 0;
     }
@@ -201,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ----------------------------------------------------
-    // User Interaction & Canvas Events
+    // User Interaction & Pointer Events
     // ----------------------------------------------------
 
     function handlePointerDown(e) {
@@ -214,14 +218,19 @@ document.addEventListener('DOMContentLoaded', () => {
         isDraggingBoard = false;
         dragDistance = 0;
 
-        // Middle mouse or Space+Click triggers pan immediately
-        if (e.button === 1 || spacePressed) {
+        const grid = renderer.screenToGrid(startMouseX, startMouseY);
+
+        // Check if pointer is on a soldier or an active jump target
+        const isSoldier = engine.hasSoldier(grid.x, grid.y);
+        const isJumpTarget = renderer.selectedSoldier && renderer.validJumps.some(j => j.to.x === grid.x && j.to.y === grid.y);
+
+        isPieceInteraction = (isSoldier || isJumpTarget) && !spacePressed && e.button !== 1;
+
+        if (spacePressed || e.button === 1) {
             isDraggingBoard = true;
             canvas.style.cursor = 'grabbing';
             return;
         }
-
-        const grid = renderer.screenToGrid(startMouseX, startMouseY);
 
         if (mode === 'edit') {
             const has = engine.hasSoldier(grid.x, grid.y);
@@ -250,7 +259,10 @@ document.addEventListener('DOMContentLoaded', () => {
         lastMouseY = clientY;
 
         if (isMouseDown) {
-            if (spacePressed || e.buttons === 4 || dragDistance > 8) {
+            // Drag board if middle click, space pressed, or if not clicking on a piece and moved > 6px
+            const panThreshold = isPieceInteraction ? 32 : 6;
+
+            if (spacePressed || e.buttons === 4 || dragDistance > panThreshold) {
                 isDraggingBoard = true;
                 renderer.pan(dx, dy);
                 canvas.style.cursor = 'grabbing';
@@ -292,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handlePlayClick(grid) {
-        // 1. Check if clicking on an active jump target
+        // 1. If clicking on an active jump target for selected soldier:
         if (renderer.selectedSoldier && renderer.validJumps.length > 0) {
             const jump = renderer.validJumps.find(j => j.to.x === grid.x && j.to.y === grid.y);
             if (jump) {
@@ -301,10 +313,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 2. Check if clicking on a soldier
+        // 2. If clicking on a soldier:
         if (engine.hasSoldier(grid.x, grid.y)) {
             if (renderer.selectedSoldier && renderer.selectedSoldier.x === grid.x && renderer.selectedSoldier.y === grid.y) {
-                // Deselect
+                // Clicking selected soldier deselects
                 renderer.setSelectedSoldier(null);
                 window.soundFx.playDeselect();
             } else {
@@ -312,12 +324,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderer.setSelectedSoldier(grid);
                 window.soundFx.playSelect();
             }
-        } else {
-            // Clicked empty space: deselect
-            if (renderer.selectedSoldier) {
-                renderer.setSelectedSoldier(null);
-                window.soundFx.playDeselect();
-            }
+            return;
+        }
+
+        // 3. Smart Jump: If clicking an empty cell that has a UNIQUE possible jump into it:
+        const possibleJumps = engine.getPossibleJumpsTo(grid.x, grid.y);
+        if (possibleJumps.length === 1) {
+            // Instant 1-click jump!
+            executeJump(possibleJumps[0]);
+            return;
+        }
+
+        // 4. Clicked elsewhere: deselect
+        if (renderer.selectedSoldier) {
+            renderer.setSelectedSoldier(null);
+            window.soundFx.playDeselect();
         }
     }
 
@@ -325,7 +346,6 @@ document.addEventListener('DOMContentLoaded', () => {
         window.soundFx.playJump();
         renderer.setSelectedSoldier(null);
 
-        // Perform animation then engine update
         renderer.addJumpAnimation(jump, () => {
             const result = engine.executeJump(jump);
             if (result.success) {
@@ -348,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderer.zoom(delta, px, py);
     }, { passive: false });
 
-    // Touch Support (Single touch pan/tap, Two-finger pinch zoom)
+    // Touch Support (Single tap to select/jump, drag empty space to pan, pinch zoom)
     canvas.addEventListener('touchstart', (e) => {
         if (e.touches.length === 1) {
             const t = e.touches[0];
@@ -361,6 +381,11 @@ document.addEventListener('DOMContentLoaded', () => {
             isDraggingBoard = false;
             dragDistance = 0;
             initialPinchDistance = null;
+
+            const grid = renderer.screenToGrid(startMouseX, startMouseY);
+            const isSoldier = engine.hasSoldier(grid.x, grid.y);
+            const isJumpTarget = renderer.selectedSoldier && renderer.validJumps.some(j => j.to.x === grid.x && j.to.y === grid.y);
+            isPieceInteraction = isSoldier || isJumpTarget;
         } else if (e.touches.length === 2) {
             isMouseDown = false;
             const t1 = e.touches[0];
@@ -379,7 +404,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const dy = clientY - lastMouseY;
             dragDistance += Math.hypot(dx, dy);
 
-            if (dragDistance > 10) {
+            const panThreshold = isPieceInteraction ? 24 : 8;
+            if (dragDistance > panThreshold) {
                 isDraggingBoard = true;
                 renderer.pan(dx, dy);
             }
@@ -394,7 +420,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const midY = ((t1.clientY + t2.clientY) / 2) - rect.top;
 
             const delta = dist > initialPinchDistance ? 1 : -1;
-            if (Math.abs(dist - initialPinchDistance) > 12) {
+            if (Math.abs(dist - initialPinchDistance) > 10) {
                 renderer.zoom(delta, midX, midY);
                 initialPinchDistance = dist;
             }
@@ -517,11 +543,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-reset').addEventListener('click', handleReset);
     document.getElementById('btn-clear').addEventListener('click', handleClear);
 
-    // Zoom buttons
     document.getElementById('btn-zoom-in').addEventListener('click', () => renderer.zoom(1));
     document.getElementById('btn-zoom-out').addEventListener('click', () => renderer.zoom(-1));
 
-    // Sound toggle
     const btnSound = document.getElementById('btn-sound-toggle');
     function updateSoundBtn() {
         btnSound.innerHTML = window.soundFx.enabled 
@@ -535,12 +559,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     updateSoundBtn();
 
-    // Language Toggle
     document.getElementById('btn-lang-toggle').addEventListener('click', () => {
         updateLanguage(currentLang === 'ru' ? 'en' : 'ru');
     });
 
-    // Modals
     const modalRules = document.getElementById('modal-rules');
     const modalPresets = document.getElementById('modal-presets');
 
@@ -569,7 +591,6 @@ document.addEventListener('DOMContentLoaded', () => {
         modalPresets.classList.remove('active');
     });
 
-    // Preset selections
     document.querySelectorAll('.preset-card').forEach(card => {
         card.addEventListener('click', () => {
             const preset = card.getAttribute('data-preset');
@@ -582,18 +603,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Window Resize
     window.addEventListener('resize', () => {
         renderer.resize();
     });
 
-    // Main Render Loop
     function frame(now) {
         renderer.render(now);
         requestAnimationFrame(frame);
     }
 
-    // Initialize Language & View
     updateLanguage('ru');
     renderer.recenter(false);
     requestAnimationFrame(frame);
