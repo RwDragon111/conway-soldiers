@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Солдаты Конвея — Бесконечное Поле | Conway's Soldiers Infinite</title>
+    <meta name="description" content="Математическая головоломка Солдаты Конвея на бесконечном клетчатом поле с зумом, панорамой, отменой ходов и пресетами задач.">
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="Солдаты Конвея — Бесконечное Поле">
+    <meta property="og:description" content="Интерактивная игра-головоломка Джона Конвея на бесконечной координатной сетке.">
+    <meta property="og:type" content="website">
+
+    <!-- Favicon SVG -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%230284c7'/><circle cx='50' cy='50' r='38' fill='%2338bdf8'/><circle cx='40' cy='38' r='14' fill='%23ffffff' opacity='0.3'/></svg>">
+    
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="app-container">
+        <!-- Interactive Fullscreen Infinite Canvas -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Top Header HUD -->
+        <header id="header-hud" class="glass-panel">
+            <div class="brand-section">
+                <div class="brand-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="9"/>
+                        <circle cx="12" cy="12" r="3" fill="#ffffff"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <h1 id="app-title">Солдаты Конвея</h1>
+                    <span id="app-subtitle" class="badge-sub">Бесконечное поле</span>
+                </div>
+            </div>
+
+            <!-- Stats Counters -->
+            <div class="stats-group">
+                <div class="stat-item">
+                    <span id="lbl-moves" class="stat-label">Ходов:</span>
+                    <span id="stat-moves" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span id="lbl-soldiers" class="stat-label">Солдат:</span>
+                    <span id="stat-soldiers" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span id="lbl-record" class="stat-label">Рекорд:</span>
+                    <span id="stat-record" class="stat-value">0</span>
+                </div>
+            </div>
+
+            <!-- Top Actions -->
+            <div class="header-actions">
+                <button id="btn-sound-toggle" class="btn btn-icon" title="Звук" aria-label="Toggle sound"></button>
+                <button id="btn-lang-toggle" class="btn" style="min-width: 44px; font-weight: 700;">EN</button>
+                <button id="btn-help" class="btn btn-icon" title="Правила и теория" aria-label="Rules and math">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Floating Central Toolbar -->
+        <nav id="toolbar" class="glass-panel" role="toolbar" aria-label="Game controls">
+            <!-- Mode Switcher -->
+            <div class="segmented-group">
+                <button id="btn-play-mode" class="segmented-btn active">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Игра
+                </button>
+                <button id="btn-edit-mode" class="segmented-btn">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    Редактор
+                </button>
+            </div>
+
+            <div class="toolbar-divider"></div>
+
+            <!-- History Controls -->
+            <button id="btn-undo" class="btn btn-icon" title="Отменить ход (Ctrl+Z)" disabled>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            </button>
+            <button id="btn-redo" class="btn btn-icon" title="Повторить ход (Ctrl+Y)" disabled>
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            </button>
+
+            <div class="toolbar-divider"></div>
+
+            <!-- Presets Button -->
+            <button id="btn-presets" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Пресеты
+            </button>
+
+            <!-- Reset & Clear -->
+            <button id="btn-reset" class="btn btn-icon" title="Сбросить расстановку (R)">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
+            <button id="btn-clear" class="btn btn-icon" title="Очистить всё поле">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+        </nav>
+
+        <!-- Floating Camera Navigation (Bottom-Right) -->
+        <aside id="floating-nav" aria-label="Camera controls">
+            <button id="btn-recenter" class="btn btn-icon glass-panel" title="Центрировать на армии">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>
+            </button>
+            <button id="btn-zoom-in" class="btn btn-icon glass-panel" title="Приблизить">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button id="btn-zoom-out" class="btn btn-icon glass-panel" title="Отдалить">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+        </aside>
+
+        <!-- Toast Notifications Layer -->
+        <div id="toast-container" aria-live="polite"></div>
+
+        <!-- Bento Modal: Presets Selection -->
+        <div id="modal-presets" class="modal-container" role="dialog" aria-modal="true" aria-labelledby="modal-presets-title">
+            <div id="modal-presets-backdrop" class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modal-presets-title">Выберите расстановку / Задачу</h3>
+                </div>
+                <div class="modal-body">
+                    <div class="presets-grid">
+                        <!-- Half Plane -->
+                        <div class="preset-card" data-preset="halfplane">
+                            <div class="preset-card-header">
+                                <span id="preset-halfplane-label" class="preset-card-title">Полная армия (Полуплоскость)</span>
+                                <span class="preset-card-tag tag-cyan">Песочница</span>
+                            </div>
+                            <span class="preset-card-desc">Классическая полуплоскость Конвея (y &le; 0). Бесконечный простор для маневров.</span>
+                        </div>
+
+                        <!-- Level 1 -->
+                        <div class="preset-card" data-preset="level1">
+                            <div class="preset-card-header">
+                                <span id="preset-level1-label" class="preset-card-title">Уровень 1 (2 солдата)</span>
+                                <span class="preset-card-tag tag-cyan">1 ход</span>
+                            </div>
+                            <span class="preset-card-desc">Минимальная конфигурация для прыжка на ряд +1. Простейший базовый шаг.</span>
+                        </div>
+
+                        <!-- Level 2 -->
+                        <div class="preset-card" data-preset="level2">
+                            <div class="preset-card-header">
+                                <span id="preset-level2-label" class="preset-card-title">Уровень 2 (4 солдата)</span>
+                                <span class="preset-card-tag tag-cyan">3-4 хода</span>
+                            </div>
+                            <span class="preset-card-desc">Минимальная четверка солдат для достижения ряда +2.</span>
+                        </div>
+
+                        <!-- Level 3 -->
+                        <div class="preset-card" data-preset="level3">
+                            <div class="preset-card-header">
+                                <span id="preset-level3-label" class="preset-card-title">Уровень 3 (8 солдат)</span>
+                                <span class="preset-card-tag tag-gold">8 ходов</span>
+                            </div>
+                            <span class="preset-card-desc">Классическая Т-образная расстановка из 8 солдат для покорения ряда +3.</span>
+                        </div>
+
+                        <!-- Level 4 -->
+                        <div class="preset-card" data-preset="level4">
+                            <div class="preset-card-header">
+                                <span id="preset-level4-label" class="preset-card-title">Уровень 4 (20 солдат Конвея)</span>
+                                <span class="preset-card-tag tag-rose">20 ходов</span>
+                            </div>
+                            <span class="preset-card-desc">Знаменитая фигура Конвея. Максимальный теоретически достижимый ряд!</span>
+                        </div>
+
+                        <!-- Empty -->
+                        <div class="preset-card" data-preset="empty">
+                            <div class="preset-card-header">
+                                <span id="preset-empty-label" class="preset-card-title">Пустое поле</span>
+                                <span class="preset-card-tag tag-cyan">Своя игра</span>
+                            </div>
+                            <span class="preset-card-desc">Полностью чистый холст. Расставляйте своих солдат в режиме редактора.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="modal-presets-close" class="btn">Закрыть</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Rules and Math Theory -->
+        <div id="modal-rules" class="modal-container" role="dialog" aria-modal="true" aria-labelledby="modal-rules-title">
+            <div id="modal-rules-backdrop" class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modal-rules-title">Правила и Теорема Конвея</h3>
+                </div>
+                <div id="modal-rules-body" class="modal-body"></div>
+                <div class="modal-footer">
+                    <button id="modal-rules-close" class="btn btn-primary">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/audio.js"></script>
+    <script src="js/engine.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
