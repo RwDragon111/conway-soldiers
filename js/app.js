@@ -206,8 +206,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // ----------------------------------------------------
 
     function onPointerDown(e) {
-        // Capture pointer to ensure smooth gesture tracking
-        canvas.setPointerCapture(e.pointerId);
+        try {
+            canvas.setPointerCapture(e.pointerId);
+        } catch (_) {}
+
         const rect = canvas.getBoundingClientRect();
         const clientX = e.clientX - rect.left;
         const clientY = e.clientY - rect.top;
@@ -218,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (activePointers.size === 2) {
             isPanningBoard = false;
             pointerDownPiece = null;
+            renderer.draggedPiece = null;
             const pts = Array.from(activePointers.values());
             initialPinchDistance = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
             return;
@@ -241,54 +244,74 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // --- PLAY MODE INSTANT INTERACTION ---
+        // --- PLAY MODE: 100% INSTANT RESPONSE (0ms delay, zero holding needed) ---
 
-        // 1. Is this cell a valid jump destination for the already selected soldier?
+        // 1. If currently a soldier is selected and user tapped its valid target:
         if (renderer.selectedSoldier && renderer.validJumps.length > 0) {
             const jump = renderer.validJumps.find(j => j.to.x === grid.x && j.to.y === grid.y);
             if (jump) {
-                // INSTANT JUMP ON TOUCH/CLICK!
                 executeJump(jump);
                 pointerDownPiece = null;
+                renderer.draggedPiece = null;
                 isPanningBoard = false;
                 return;
             }
         }
 
-        // 2. Is this cell an occupied soldier?
+        // 2. Tapped on a soldier:
         if (engine.hasSoldier(grid.x, grid.y)) {
-            if (renderer.selectedSoldier && renderer.selectedSoldier.x === grid.x && renderer.selectedSoldier.y === grid.y) {
-                // Tapping selected soldier deselects it
-                renderer.setSelectedSoldier(null);
-                window.soundFx.playDeselect();
-            } else {
-                // INSTANT SELECTION ON TOUCH/CLICK!
-                renderer.setSelectedSoldier(grid);
-                window.soundFx.playSelect();
-            }
+            const validJumps = engine.getValidJumpsFor(grid.x, grid.y);
 
-            pointerDownPiece = {
-                gridX: grid.x,
-                gridY: grid.y,
-                startX: clientX,
-                startY: clientY,
-                hasMoved: false
-            };
-            isPanningBoard = false;
-            return;
+            if (validJumps.length > 0) {
+                // Soldier has moves: select it immediately!
+                if (renderer.selectedSoldier && renderer.selectedSoldier.x === grid.x && renderer.selectedSoldier.y === grid.y) {
+                    renderer.setSelectedSoldier(null);
+                    window.soundFx.playDeselect();
+                } else {
+                    renderer.setSelectedSoldier(grid);
+                    window.soundFx.playSelect();
+                }
+
+                pointerDownPiece = {
+                    gridX: grid.x,
+                    gridY: grid.y,
+                    startX: clientX,
+                    startY: clientY,
+                    isJumper: true
+                };
+                isPanningBoard = false;
+                return;
+            } else {
+                // Soldier cannot jump directly (e.g. front-line piece at row 0).
+                // Check if a soldier behind it can jump OVER it!
+                const jumpers = engine.getJumpersOver(grid.x, grid.y);
+                if (jumpers.length >= 1) {
+                    // Intuitively execute that jump forward for the player!
+                    executeJump(jumpers[0]);
+                    pointerDownPiece = null;
+                    isPanningBoard = false;
+                    return;
+                } else {
+                    window.soundFx.playDeselect();
+                    showToast(currentLang === 'ru' ? 'Этот шар заблокирован. Выберите шар с сияющей подсветкой!' : 'This soldier is blocked. Select a glowing soldier!', 'info');
+                    pointerDownPiece = null;
+                    isPanningBoard = false;
+                    return;
+                }
+            }
         }
 
-        // 3. Smart Jump: Did user tap an empty cell that has a UNIQUE incoming jump?
+        // 3. Tapped on an empty cell: Smart Jump!
         const incoming = engine.getPossibleJumpsTo(grid.x, grid.y);
-        if (incoming.length === 1) {
-            // INSTANT 1-CLICK JUMP INTO EMPTY CELL!
+        if (incoming.length >= 1) {
+            // Instant 1-touch jump into destination!
             executeJump(incoming[0]);
             pointerDownPiece = null;
             isPanningBoard = false;
             return;
         }
 
-        // 4. Clicked empty space: deselect any active soldier and prepare for board panning
+        // 4. Clicked empty space: deselect and prepare for board panning
         if (renderer.selectedSoldier) {
             renderer.setSelectedSoldier(null);
             window.soundFx.playDeselect();
@@ -300,13 +323,12 @@ document.addEventListener('DOMContentLoaded', () => {
             gridY: grid.y,
             startX: clientX,
             startY: clientY,
-            hasMoved: false
+            isJumper: false
         };
     }
 
     function onPointerMove(e) {
         if (!activePointers.has(e.pointerId)) {
-            // Hover preview for desktop mouse when not holding down
             const rect = canvas.getBoundingClientRect();
             renderer.updateHover(e.clientX - rect.left, e.clientY - rect.top);
             return;
@@ -339,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Single Pointer Move
+        // Single Pointer Move: Edit mode painting
         if (mode === 'edit' && pointerDownPiece) {
             const grid = renderer.screenToGrid(clientX, clientY);
             if (editBrush === 'add') {
@@ -351,27 +373,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        if (pointerDownPiece) {
-            const totalDist = Math.hypot(clientX - pointerDownPiece.startX, clientY - pointerDownPiece.startY);
-            if (totalDist > 8) {
-                pointerDownPiece.hasMoved = true;
+        // Single Pointer Move: Dragging piece or panning board
+        if (pointerDownPiece && pointerDownPiece.isJumper) {
+            const dist = Math.hypot(clientX - pointerDownPiece.startX, clientY - pointerDownPiece.startY);
+            if (dist > 10) {
+                // User is dragging the soldier token
+                renderer.draggedPiece = {
+                    from: { x: pointerDownPiece.gridX, y: pointerDownPiece.gridY },
+                    currentScreenX: clientX,
+                    currentScreenY: clientY
+                };
             }
-
-            // Swipe-to-jump: if dragging from selected soldier towards a valid target
-            if (renderer.selectedSoldier && pointerDownPiece.gridX === renderer.selectedSoldier.x && pointerDownPiece.gridY === renderer.selectedSoldier.y) {
-                const curGrid = renderer.screenToGrid(clientX, clientY);
-                const jump = renderer.validJumps.find(j => j.to.x === curGrid.x && j.to.y === curGrid.y);
-                if (jump && totalDist > renderer.cellSize * 0.7) {
-                    // Swiped directly into target square!
-                    executeJump(jump);
-                    pointerDownPiece = null;
-                    return;
-                }
-            }
-        }
-
-        // Pan board if dragging on empty space or holding space/middle click
-        if (isPanningBoard || spacePressed || e.buttons === 4) {
+        } else if (isPanningBoard || spacePressed || e.buttons === 4) {
             renderer.pan(dx, dy);
             canvas.style.cursor = 'grabbing';
         }
@@ -389,6 +402,21 @@ document.addEventListener('DOMContentLoaded', () => {
             initialPinchDistance = null;
         }
 
+        // If a piece was being dragged, check if dropped on a valid landing target
+        if (renderer.draggedPiece) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.clientX - rect.left;
+            const clientY = e.clientY - rect.top;
+            const dropGrid = renderer.screenToGrid(clientX, clientY);
+
+            const jump = renderer.validJumps.find(j => j.to.x === dropGrid.x && j.to.y === dropGrid.y);
+            renderer.draggedPiece = null;
+
+            if (jump) {
+                executeJump(jump);
+            }
+        }
+
         isPanningBoard = false;
         pointerDownPiece = null;
         canvas.style.cursor = spacePressed ? 'grab' : 'default';
@@ -399,6 +427,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initialPinchDistance = null;
         isPanningBoard = false;
         pointerDownPiece = null;
+        renderer.draggedPiece = null;
         canvas.style.cursor = 'default';
     }
 

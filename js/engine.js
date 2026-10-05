@@ -167,6 +167,34 @@ class ConwayEngine {
         return incoming;
     }
 
+    getJumpersOver(overX, overY) {
+        if (!this.hasSoldier(overX, overY)) return [];
+
+        const jumps = [];
+        const directions = [
+            { dx: 0, dy: 1 },
+            { dx: 0, dy: -1 },
+            { dx: 1, dy: 0 },
+            { dx: -1, dy: 0 }
+        ];
+
+        for (const dir of directions) {
+            const fromX = overX - dir.dx;
+            const fromY = overY - dir.dy;
+            const toX = overX + dir.dx;
+            const toY = overY + dir.dy;
+
+            if (this.hasSoldier(fromX, fromY) && !this.hasSoldier(toX, toY)) {
+                jumps.push({
+                    from: { x: fromX, y: fromY },
+                    over: { x: overX, y: overY },
+                    to: { x: toX, y: toY }
+                });
+            }
+        }
+        return jumps;
+    }
+
     _removeAt(x, y) {
         const key = this._key(x, y);
         if (this.isInfiniteArmy) {

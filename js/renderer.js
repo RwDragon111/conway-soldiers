@@ -413,6 +413,7 @@ class ConwayRenderer {
 
         for (const s of visibleSoldiers) {
             const isSelected = this.selectedSoldier && this.selectedSoldier.x === s.x && this.selectedSoldier.y === s.y;
+            const canMove = this.engine.getValidJumpsFor(s.x, s.y).length > 0;
             const pos = this.gridToScreen(s.x, s.y);
             const radius = this.cellSize * 0.36;
 
@@ -435,10 +436,16 @@ class ConwayRenderer {
                 grad.addColorStop(0, '#fef08a');
                 grad.addColorStop(0.3, '#f59e0b');
                 grad.addColorStop(1, '#b45309');
-            } else {
-                grad.addColorStop(0, '#bae6fd');
+            } else if (canMove) {
+                // Movable soldier has a brighter, energized cyan glow
+                grad.addColorStop(0, '#e0f2fe');
                 grad.addColorStop(0.3, '#38bdf8');
-                grad.addColorStop(1, '#0369a1');
+                grad.addColorStop(1, '#0284c7');
+            } else {
+                // Blocked soldier is slightly dimmer
+                grad.addColorStop(0, '#94a3b8');
+                grad.addColorStop(0.3, '#475569');
+                grad.addColorStop(1, '#1e293b');
             }
 
             ctx.fillStyle = grad;
@@ -448,9 +455,6 @@ class ConwayRenderer {
 
             ctx.shadowBlur = 0;
             ctx.shadowOffsetY = 0;
-            ctx.strokeStyle = isSelected ? 'rgba(255, 255, 255, 0.8)' : 'rgba(255, 255, 255, 0.4)';
-            ctx.lineWidth = 1.2;
-            ctx.stroke();
 
             if (isSelected) {
                 ctx.shadowColor = 'rgba(244, 63, 94, 0.9)';
@@ -460,10 +464,53 @@ class ConwayRenderer {
                 ctx.beginPath();
                 ctx.arc(pos.x, pos.y, radius + 4 * pulse, 0, Math.PI * 2);
                 ctx.stroke();
+            } else if (canMove) {
+                // Subtle glowing ring around movable soldiers
+                ctx.strokeStyle = `rgba(56, 189, 248, ${0.5 * pulse + 0.3})`;
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, radius + 2, 0, Math.PI * 2);
+                ctx.stroke();
+            } else {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
             }
 
             ctx.restore();
         }
+
+        // Draw dragged piece if user is dragging with finger or mouse
+        this.drawDraggedPiece();
+    }
+
+    drawDraggedPiece() {
+        if (!this.draggedPiece) return;
+        const ctx = this.ctx;
+        const { currentScreenX, currentScreenY } = this.draggedPiece;
+        const radius = this.cellSize * 0.4;
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(56, 189, 248, 0.8)';
+        ctx.shadowBlur = 20;
+
+        const grad = ctx.createRadialGradient(
+            currentScreenX - radius * 0.3, currentScreenY - radius * 0.35, radius * 0.1,
+            currentScreenX, currentScreenY, radius
+        );
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.3, '#38bdf8');
+        grad.addColorStop(1, '#0284c7');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(currentScreenX, currentScreenY, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
     }
 
     drawJumpAnimations() {
